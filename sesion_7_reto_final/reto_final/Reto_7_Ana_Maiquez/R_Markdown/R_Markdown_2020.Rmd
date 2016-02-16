@@ -1,0 +1,137 @@
+---
+title: "R_Markdown_2020_Ana_Maria_Maiquez_Rodriguez"
+author: "Ana Maria Maiquez Rodríguez"
+date: "14 de febrero de 2016"
+output: html_document
+---
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+summary(cars)
+```
+
+You can also embed plots, for example:
+
+```{r, echo=FALSE}
+plot(cars)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+###################################
+#ESTABLECE EL DIRECTORIO DE TRABAJO
+###################################
+#DIRECTORIO DE TRABAJO
+dir_trabajo<-"C:/Users/Ana/Documents/Ana/Universidad/E/Eco/sesion_7_reto_final"
+#ESTABLECE EL DIRECTORIO DE TRABAJO
+setwd(dir_trabajo)
+
+getwd()
+
+
+################################
+#INSTALACION Y CARGA DE PAQUETES
+################################
+#NOTA: SOLO ES NECESARIO INSTALARLOS UNA VEZ. DESACTIVA ESTAS LÍNEAS PARA LA PRÓXIMA SESIÓN
+#INSTALA PAQUETE DISMO Y TODAS SUS DEPENDENCIAS (EJECUTAR UNA SOLA VEZ)
+install.packages("dismo", dep=TRUE) #SDMs con R
+install.packages("plotmo", dep=TRUE) #curvas de respuesta
+install.packages("randomForest", dep=TRUE) #random forest
+install.packages("party", dep=TRUE) #árboles de inferencia condicional
+install.packages("HH", dep=TRUE) #VIF
+install.packages("tree", dep=TRUE) #árboles de regresión
+
+#CARGA LAS LIBRERIAS NECESARIAS (EJECUTAR SIEMPRE QUE TRABAJES CON EL SCRIPT)
+library(dismo)
+library(plotmo)
+library(randomForest)
+library(party)
+library(HH)
+library(tree)
+library(rgdal)
+
+
+##################################
+#IMPORTA LAS VARIABLES PREDICTORAS
+##################################
+#LISTADO DE VARIABLES
+lista_variables2020 <- list.files(path="variables/futuro_A2/2020/",pattern='*.asc', full.names=TRUE)
+
+#stack Y brick PREPARAN LAS VARIABLES EN UN UNICO OBJETO ESPACIAL
+help(brick) #mapas en memoria, más rápido (pero usa mucha RAM)
+help(stack) #mapas en disco, más lento (pero usa menos RAM)
+variables2020 <- brick(stack(lista_variables2020))
+
+#DIBUJA LAS VARIABLES PREDICTORAS
+png("resultados/variables2020.png", width=2000, height=2000, pointsize=20)
+plot(variables2020)
+dev.off()
+
+
+
+#####################################################
+#ANÁLISIS DE CORRELACIÓN DE LAS VARIABLES PREDICTORAS
+#####################################################
+
+#TRANSFORMA LOS MAPAS EN UNA TABLA
+variables2020_tabla<-as.data.frame(variables2020)
+
+#ELIMINA LOS VALORES NULOS
+variables2020_tabla<-na.omit(variables2020_tabla)
+
+#MATRIZ DE CORRELACIÓN
+help(cor)
+variables2020_correlacion<-cor(variables2020_tabla)
+
+#MATRIZ DE DISTANCIAS ('ABS' = VALOR ABSOLUTO, PARA ELIMINAR CORRELACIONES NEGATIVAS)
+help(as.dist)
+help(abs)
+variables2020_dist<-abs(as.dist(variables2020_correlacion))
+
+#CLUSTER DE VARIABLES SEGÚN LA DISTANCIA (MENOR DISTANCIA = MAYOR CORRELACIÓN)
+help(hclust)
+variables2020_cluster<-hclust(1-variables2020_dist)
+
+#GRAFICO DEL CLUSTER DE CORRELACIONES 
+plot(variables2020_cluster)
+
+#GRÁFICO DEL CLUSTER DE CORRELACIONES EXPORTADO A PDF
+pdf("correlacion2020.pdf", width=8, height=11.5, pointsize=20)
+plot(variables2020_cluster)
+dev.off()
+
+#SELECCIONAMOS LAS VARIABLES CON LAS QUE QUEREMOS TRABAJAR
+variables2020_tabla2<-data.frame(variables2020_tabla$PA,variables2020_tabla$topo_posic,variables2020_tabla$sol_rad_sum,variables2020_tabla$huella_humana,variables2020_tabla$PV,variables2020_tabla$topo_pend)
+
+names(variables2020_tabla2)<-c("PA","topo_posic","sol_rad_sum","huella_humana","PV","topo_pend")
+
+
+#VEMOS EL RESULTADO
+
+head(tabla_completa)
+
+
+# Computamos una regresión logística con todos nuestras variables y con los datos de presencia/ausencia
+
+m1<-glm(respuesta ~.,data=tabla_completa)
+summary(m1)
+
+# seleccionamos las variables que son significativas. Los "estimate" nos dan idea de la ganancia de cada variable.
+tabla_modelo <-tabla_completa[,c('huella_humana','PA','PV','topo_posic','respuesta')]
+
+m2<-glm(respuesta~., data=tabla_modelo)
+summary(m2)
+
+# valores predichos. Ya tenemos nuestro modelo matemático, ahora vamos a aplicarlo a las variables (mapas) que teníamos al principio.
+
+
+p<-predict(variables2020, m2)
+plot(p)
+
+
+# Generar mapa en formato .asc
+p_raster<-raster(p)
+writeRaster(p, "modelo_futuro2020.asc")
